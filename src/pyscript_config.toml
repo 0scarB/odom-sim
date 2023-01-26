@@ -1,0 +1,4 @@
+[[fetch]]
+files = [
+    "./python/__init__.py",
+]
