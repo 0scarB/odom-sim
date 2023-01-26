@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import math
 from collections.abc import Callable
 from typing import Any
@@ -23,13 +25,13 @@ class Sim:
         self.canvas = canvas
         self.canvas_ctx = canvas_ctx
 
-        self.keyboardInputHandler = KeyboardInputHandler()
-        self.robot = Robot(canvas_ctx)
+        self.keyboard_input_handler = KeyboardInputHandler()
+        self.robot = Robot(canvas_ctx, self.keyboard_input_handler)
 
     def update(self) -> None:
         self.clear_canvas()
 
-        self.robot.draw()
+        self.robot.update()
 
     def clear_canvas(self) -> None:
         self.canvas_ctx.clearRect(0, 0, self.canvas.width, self.canvas.height)
@@ -40,11 +42,14 @@ class Robot:
     WHEEL_BASE = 0.2
     WHEEL_WIDTH = 0.03
     WHEEL_DIAMETER = 0.06
-    ROD_THICKNESS = WHEEL_BASE / 10
+    ROD_THICKNESS = WHEEL_BASE / 20
+    HEADING_INCREMENT = 0.01
+    MAX_HEADING_CHANGE = math.pi / 4
 
     def __init__(
             self,
             canvas_ctx,
+            keyboard_input_handler: KeyboardInputHandler,
             x_in_pixels: float | None = None,
             y_in_pixels: float | None = None,
             pixels_per_meter: float = 1000,
@@ -52,13 +57,31 @@ class Robot:
         self.canvas_ctx = canvas_ctx
         self.pixels_per_meter = pixels_per_meter
 
-        self.heading = math.pi / 4
+        self.heading = 0
+        self.is_moving_right = False
+        self.is_moving_left = False
         self.speed = 0
-        self.x = x_in_pixels / self.pixels_per_meter if x_in_pixels else self.WHEEL_BASE / 2
-        self.y = y_in_pixels / self.pixels_per_meter if y_in_pixels else self.LENGTH / 2
+        self.x = (x_in_pixels / self.pixels_per_meter if x_in_pixels else self.WHEEL_BASE / 2) + 0.1
+        self.y = (y_in_pixels / self.pixels_per_meter if y_in_pixels else self.LENGTH / 2) + 0.1
         self.rot = 0
 
-    def draw(self) -> None:
+        def on_right_key_down():
+            self.is_moving_right = True
+
+        def on_left_key_down():
+            self.is_moving_left = True
+
+        def on_key_up():
+            self.is_moving_left = False
+            self.is_moving_right = False
+
+        keyboard_input_handler.on_left_key_down(on_left_key_down)
+        keyboard_input_handler.on_right_key_down(on_right_key_down)
+        keyboard_input_handler.on_key_up(on_key_up)
+
+    def update(self) -> None:
+        self.update_heading()
+
         self.draw_rect(
             -self.ROD_THICKNESS / 2, -self.LENGTH / 2,
             self.ROD_THICKNESS, self.LENGTH,
@@ -72,6 +95,22 @@ class Robot:
             self.ROD_THICKNESS, self.LENGTH / 4,
             self.heading
         )
+        self.draw_turing_circle()
+
+    def update_heading(self) -> None:
+        if self.is_moving_left:
+            self.increment_heading(direction=1)
+
+        if self.is_moving_right:
+            self.increment_heading(direction=-1)
+
+    def increment_heading(self, direction: float) -> None:
+        new_heading = self.heading + direction * self.HEADING_INCREMENT
+
+        new_heading = max(new_heading, -self.MAX_HEADING_CHANGE)
+        new_heading = min(new_heading, self.MAX_HEADING_CHANGE)
+
+        self.heading = new_heading
 
     def draw_rect(
             self,
@@ -156,6 +195,16 @@ class Robot:
         self.canvas_ctx.strokeStyle = "green"
         self.canvas_ctx.stroke()
 
+    def draw_rect_around_center(
+            self,
+            x: float,
+            y: float,
+            width: float,
+            height: float,
+            rel_rot: float,
+    ) -> None:
+        self.draw_rect(x - width / 2, y - height / 2, width, height, rel_rot)
+
     def draw_axel(self, offset: float, heading: float) -> None:
         self.draw_rect(
             -self.WHEEL_BASE / 2, -self.ROD_THICKNESS / 2 + offset,
@@ -174,6 +223,56 @@ class Robot:
             self.WHEEL_DIAMETER,
             heading,
         )
+
+    def draw_arrow(self, offset: float, heading: float) -> None:
+        self.draw_rect_around_center(
+            0, self.ROD_THICKNESS + offset,
+            self.WHEEL_BASE / 2, self.ROD_THICKNESS / 2,
+            heading + math.pi / 2
+        )
+        self.draw_triangle_around_center(
+            0, self.ROD_THICKNESS + offset,
+            self.ROD_THICKNESS * 2, self.LENGTH / 6,
+            heading
+        )
+
+    def draw_turing_circle(self) -> None:
+        line1_x1, line1_y1 = 0, -self.LENGTH / 2
+        line1_x2, line1_y2 = 1, -self.LENGTH / 2
+
+        line2_x1, line2_y1 = 0, self.LENGTH / 2
+        line2_x2, line2_y2 = translate(*rotate_around_origin(1, 0, self.heading), 0, self.LENGTH / 2)
+
+        self.draw_line(line1_x1, line1_y1, line1_x2, line1_y2)
+        self.draw_line(line2_x1, line2_y1, line2_x2, line2_y2)
+
+        try:
+            cx, cy = line_intersection(
+                ((line1_x1, line1_y1), (line1_x2, line1_y2)),
+                ((line2_x1, line2_y1), (line2_x2, line2_y2)),
+            )
+        except ValueError:
+            return
+
+        r = get_dist(cx, cy, 0, 0)
+
+        self.canvas_ctx.beginPath()
+        self.canvas_ctx.arc(*self.robot_point_to_canvas_point(cx, cy), r * self.pixels_per_meter, 0, 2 * math.pi, False)
+        self.canvas_ctx.strokeStyle = "blue"
+        self.canvas_ctx.stroke()
+
+    def draw_line(self, x1: float, y1: float, x2: float, y2: float) -> None:
+        self.canvas_ctx.beginPath()
+        self.canvas_ctx.moveTo(*self.robot_point_to_canvas_point(x1, y1))
+        self.canvas_ctx.lineTo(*self.robot_point_to_canvas_point(x2, y2))
+        self.canvas_ctx.strokeStyle = "blue"
+        self.canvas_ctx.stroke()
+
+    def robot_point_to_canvas_point(self, x: float, y: float) -> tuple[float, float]:
+        x, y = translate(x, y, self.x, self.y)
+        x, y = rotate_around_point(self.x, self.y, x, y, self.rot)
+        return scale_from_origin(x, y, self.pixels_per_meter)
+
 
 class KeyboardInputHandler:
 
@@ -341,6 +440,57 @@ def apply_transformation_using_reference_point_as_origin(
     x, y = translate(x, y, -ref_x, -ref_y)
     x, y = transformation(x, y, *args, **kwargs)
     return translate(x, y, ref_x, ref_y)
+
+
+# Source: https://stackoverflow.com/questions/20677795/how-do-i-compute-the-intersection-point-of-two-lines
+def get_intersection(
+        line1_x1: float,
+        line1_y1: float,
+        line1_x2: float,
+        line1_y2: float,
+        line2_x1: float,
+        line2_y1: float,
+        line2_x2: float,
+        line2_y2: float,
+) -> tuple[float, float]:
+    # xdiff = (line1[0][0] - line1[1][0], line2[0][0] - line2[1][0])
+    # ydiff = (line1[0][1] - line1[1][1], line2[0][1] - line2[1][1])
+
+    xdiff = (line1_x1 - line1_x2, line2_x1 - line2_x2)
+    ydiff = (line1_y1 - line1_y2, line2_y1 - line2_y2)
+
+    def det(x1, y1, x2, y2):
+        return x1 * y2 - y1 * x2
+
+    div = det(*xdiff, *ydiff)
+    if div == 0:
+        raise ValueError('lines do not intersect')
+
+    d = (det(line1_x1, line1_y1, line1_x2, line1_y2), det(line2_x1, line2_y1, line2_x2, line2_y2))
+    x = det(*d, *xdiff) / div
+    y = det(*d, *ydiff) / div
+    return x, y
+
+
+def line_intersection(line1, line2):
+    xdiff = (line1[0][0] - line1[1][0], line2[0][0] - line2[1][0])
+    ydiff = (line1[0][1] - line1[1][1], line2[0][1] - line2[1][1])
+
+    def det(a, b):
+        return a[0] * b[1] - a[1] * b[0]
+
+    div = det(xdiff, ydiff)
+    if div == 0:
+        raise ValueError('lines do not intersect')
+
+    d = (det(*line1), det(*line2))
+    x = det(d, xdiff) / div
+    y = det(d, ydiff) / div
+    return x, y
+
+
+def get_dist(x1: float, y1: float, x2: float, y2: float) -> float:
+    return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
 
 
 main()
