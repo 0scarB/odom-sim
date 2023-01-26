@@ -67,7 +67,11 @@ class Robot:
 
         self.draw_axel(-self.LENGTH / 2, 0)
         self.draw_axel(self.LENGTH / 2, self.heading)
-        self.draw_arrow((self.LENGTH / 2) + 0.05, self.heading)
+        self.draw_arrow_around_center(
+            0, self.ROD_THICKNESS + (self.LENGTH / 2) + 0.01,
+            self.ROD_THICKNESS, self.LENGTH / 4,
+            self.heading
+        )
 
     def draw_rect(
             self,
@@ -107,7 +111,7 @@ class Robot:
         self.canvas_ctx.strokeStyle = "green"
         self.canvas_ctx.stroke()
 
-    def draw_triangle_around_center(
+    def draw_arrow_around_center(
             self,
             x: float,
             y: float,
@@ -115,21 +119,28 @@ class Robot:
             height: float,
             rel_rot: float,
     ) -> None:
-        x_min = x
-        y_min = y
-        x_max = x + width
-        x_mid = x_max / 2
-        y_max = y + height
+        x_centered = x - width / 2
+        y_centered = y - width / 2
+
+        x_min = x_centered
+        y_min = y_centered
+        x_max = x_centered + width
+        x_mid = (x_min + x_max) / 2
+        y_max = y_centered + height
 
         c = ((x_min + x_max) / 2, (y_min + y_max) / 2)
 
         p1 = (x_min, y_min)
-        p2 = (x_max, y_min)
-        p3 = (x_mid, y_max)
+        p2 = (x_min, y_max)
+        p3 = (x_min - 0.02, y_max)
+        p4 = (x_mid, y_max + 0.04)
+        p5 = (x_max + 0.02, y_max)
+        p6 = (x_max, y_max)
+        p7 = (x_max, y_min)
 
         self.canvas_ctx.beginPath()
         is_first_point = True
-        for p in (p1, p2, p3):
+        for p in (p1, p2, p3, p4, p5, p6, p7):
             canvas_p = rotate_around_point(c[0], c[1], p[0], p[1], rel_rot)
             canvas_p = translate(canvas_p[0], canvas_p[1], self.x, self.y)
             canvas_p = rotate_around_point(self.x, self.y, canvas_p[0], canvas_p[1], self.rot)
@@ -144,16 +155,6 @@ class Robot:
         self.canvas_ctx.closePath()
         self.canvas_ctx.strokeStyle = "green"
         self.canvas_ctx.stroke()
-
-    def draw_rect_around_center(
-            self,
-            x: float,
-            y: float,
-            width: float,
-            height: float,
-            rel_rot: float,
-    ) -> None:
-        self.draw_rect(x - width / 2, y - height / 2, width, height, rel_rot)
 
     def draw_axel(self, offset: float, heading: float) -> None:
         self.draw_rect(
@@ -173,19 +174,6 @@ class Robot:
             self.WHEEL_DIAMETER,
             heading,
         )
-
-    def draw_arrow(self, offset: float, heading: float) -> None:
-        self.draw_rect_around_center(
-            0, self.ROD_THICKNESS + offset,
-            self.WHEEL_BASE / 2, self.ROD_THICKNESS / 2,
-            heading + math.pi / 2
-        )
-        self.draw_triangle_around_center(
-            0, self.ROD_THICKNESS + offset,
-            self.ROD_THICKNESS * 2, self.LENGTH / 6,
-            heading
-        )
-
 
 class KeyboardInputHandler:
 
