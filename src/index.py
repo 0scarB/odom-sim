@@ -24,8 +24,6 @@ class Sim:
         self.canvas_ctx = canvas_ctx
 
         self.keyboardInputHandler = KeyboardInputHandler()
-        self.keyboardInputHandler.on_key_down(lambda k: f"Down {k}")
-        self.keyboardInputHandler.on_key_up(lambda k: f"Up {k}")
         self.robot = Robot(canvas_ctx)
 
     def update(self) -> None:
@@ -195,24 +193,105 @@ class KeyboardInputHandler:
         self.on_key_down_callbacks: list[Callable[[str], None]] = []
         self.on_key_up_callbacks: list[Callable[[str], None]] = []
 
-        main_el = document.getElementsByTagName("main")[0]
-        print(main_el)
-        main_el.addEventListener("keydown", self.handle_key_down)
-        main_el.addEventListener("keyup", self.handle_key_up)
+        document.addEventListener("keydown", create_proxy(self.handle_key_down))
+        document.addEventListener("keyup", create_proxy(self.handle_key_up))
 
-    def on_key_down(self, callback: Callable[[str], None]) -> None:
-        self.on_key_down_callbacks.append(callback)
+    def on_forward_key_down(self, callback: Callable[[str], None] | Callable[[], None]) -> None:
+        self.on_key_down(callback, "w", "ArrowUp", ignore_case=True)
+
+    def on_forward_key_up(self, callback: Callable[[str], None] | Callable[[], None]) -> None:
+        self.on_key_up(callback, "w", "ArrowUp", ignore_case=True)
+
+    def on_backward_key_down(self, callback: Callable[[str], None] | Callable[[], None]) -> None:
+        self.on_key_down(callback, "s", "ArrowDown", ignore_case=True)
+
+    def on_backward_key_up(self, callback: Callable[[str], None] | Callable[[], None]) -> None:
+        self.on_key_up(callback, "s", "ArrowDown", ignore_case=True)
+
+    def on_left_key_down(self, callback: Callable[[str], None] | Callable[[], None]) -> None:
+        self.on_key_down(callback, "a", "ArrowLeft", ignore_case=True)
+
+    def on_left_key_up(self, callback: Callable[[str], None] | Callable[[], None]) -> None:
+        self.on_key_up(callback, "a", "ArrowLeft", ignore_case=True)
+
+    def on_right_key_down(self, callback: Callable[[str], None] | Callable[[], None]) -> None:
+        self.on_key_down(callback, "d", "ArrowRight", ignore_case=True)
+
+    def on_right_key_up(self, callback: Callable[[str], None] | Callable[[], None]) -> None:
+        self.on_key_up(callback, "d", "ArrowRight", ignore_case=True)
+
+    def on_key_down(
+            self,
+            callback: Callable[[str], None] | Callable[[], None],
+            *expected_keys: str,
+            ignore_case: bool = False
+    ) -> None:
+        self.add_key_callback_to_list(
+            self.on_key_down_callbacks,
+            callback,
+            *expected_keys,
+            ignore_case=ignore_case,
+        )
+
+    def on_key_up(
+            self,
+            callback: Callable[[str], None] | Callable[[], None],
+            *expected_keys: str,
+            ignore_case: bool = False
+    ) -> None:
+        self.add_key_callback_to_list(
+            self.on_key_up_callbacks,
+            callback,
+            *expected_keys,
+            ignore_case=ignore_case,
+        )
 
     def handle_key_down(self, event) -> None:
         for callback in self.on_key_down_callbacks:
-            callback(key)
-
-    def on_key_up(self, callback: Callable[[str], None]) -> None:
-        self.on_key_up_callbacks.append(callback)
+            callback(event.key)
 
     def handle_key_up(self, event) -> None:
         for callback in self.on_key_up_callbacks:
-            callback(key)
+            callback(event.key)
+
+    def add_key_callback_to_list(
+            self,
+            callbacks: list[Callable[[str], None]],
+            callback: Callable[[str], None] | Callable[[], None],
+            *expected_keys: str,
+            ignore_case: bool = False
+    ) -> None:
+
+        def try_callback_with_and_without_key_arg(key: str) -> None:
+            try:
+                return callback(key)
+            except TypeError as err:
+                if "arguments" in str(err):
+                    return callback()
+
+                raise err
+
+        if expected_keys:
+
+            if ignore_case:
+                expected_keys_set = {key.lower() for key in expected_keys}
+            else:
+                expected_keys_set = set(expected_keys)
+
+            def real_callback(key: str) -> None:
+
+                if ignore_case:
+                    key = key.lower()
+
+                if key in expected_keys_set:
+                    try_callback_with_and_without_key_arg(key)
+
+        else:
+
+            def real_callback(key: str) -> None:
+                try_callback_with_and_without_key_arg(key)
+
+        callbacks.append(real_callback)
 
 
 def translate(x: float, y: float, x_offset: float, y_offset: float) -> tuple[float, float]:
