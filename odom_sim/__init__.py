@@ -64,8 +64,16 @@ app.include_router(api)
 def start_server(
         log_level: Literal["info"] = "info",
 ) -> None:
+
+    class CustomServer(uvicorn.Server):
+
+        def run(self, sockets=None) -> None:
+            self.config.setup_event_loop()
+            loop = asyncio.get_event_loop()
+            return loop.run_until_complete(self.serve(sockets=sockets))
+
     config = uvicorn.Config(app, host="0.0.0.0", port=8000, log_level=log_level, loop="asyncio")
-    server = uvicorn.Server(config=config)
+    server = CustomServer(config=config)
 
     loop = asyncio.get_event_loop()
-    loop.run(server.run())
+    loop.run_until_complete(server.run())
