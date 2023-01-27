@@ -126,7 +126,7 @@ class Robot:
     @speed.setter
     def speed(self, value: float) -> None:
         self._speed = value
-        self.api_layer.put_heading(value)
+        self.api_layer.put_speed(value)
 
     def update(self) -> None:
         self.update_heading()
