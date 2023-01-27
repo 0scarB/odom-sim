@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import asyncio
+from asyncio import Task
 import math
+from collections import deque
 from collections.abc import Callable
 import sys
+from dataclasses import dataclass
 from typing import Any
 
 from js import document, setInterval
+from pyodide.http import pyfetch, FetchResponse
 from pyodide.ffi import create_proxy
 
 
@@ -30,12 +35,14 @@ class Sim:
         self.update_feq_in_seconds = update_feq_in_seconds
 
         self.keyboard_input_handler = KeyboardInputHandler()
-        self.robot = Robot(canvas_ctx, self.keyboard_input_handler, self.update_feq_in_seconds)
+        self.api_layer = APILayer()
+        self.robot = Robot(canvas_ctx, self.keyboard_input_handler, self.update_feq_in_seconds, self.api_layer)
 
     def update(self) -> None:
         self.clear_canvas()
 
         self.robot.update()
+        self.api_layer.wait_for_requests_to_finish()
 
     def clear_canvas(self) -> None:
         self.canvas_ctx.clearRect(0, 0, self.canvas.width, self.canvas.height)
@@ -56,6 +63,7 @@ class Robot:
             canvas_ctx,
             keyboard_input_handler: KeyboardInputHandler,
             update_feq_in_seconds: float,
+            api_layer: APILayer,
             x_in_pixels: float | None = None,
             y_in_pixels: float | None = None,
             pixels_per_meter: float = 500,
@@ -63,11 +71,13 @@ class Robot:
         self.canvas_ctx = canvas_ctx
         self.pixels_per_meter = pixels_per_meter
         self.update_interval_in_seconds = update_feq_in_seconds
+        self.api_layer = api_layer
 
-        self.heading = 0
+        self._heading = 0
+        self._speed = 0
+
         self.is_moving_right = False
         self.is_moving_left = False
-        self.speed = 0
         self.x = (x_in_pixels / self.pixels_per_meter if x_in_pixels else self.WHEEL_BASE / 2) + 0.1
         self.y = (y_in_pixels / self.pixels_per_meter if y_in_pixels else self.LENGTH / 2) + 0.1
         self.rot = math.pi
@@ -99,6 +109,24 @@ class Robot:
         keyboard_input_handler.on_backward_key_down(on_backward_key_down)
         keyboard_input_handler.on_forward_key_up(on_movement_key_up)
         keyboard_input_handler.on_backward_key_up(on_movement_key_up)
+
+    @property
+    def heading(self) -> float:
+        return self._heading
+
+    @heading.setter
+    def heading(self, value: float) -> None:
+        self._heading = value
+        self.api_layer.put_heading(value)
+
+    @property
+    def speed(self) -> float:
+        return self._speed
+
+    @speed.setter
+    def speed(self, value: float) -> None:
+        self._speed = value
+        self.api_layer.put_heading(value)
 
     def update(self) -> None:
         self.update_heading()
@@ -419,6 +447,58 @@ class KeyboardInputHandler:
                 try_callback_with_and_without_key_arg(key)
 
         callbacks.append(real_callback)
+
+
+@dataclass
+class Request:
+    route: str
+    method: str = "GET"
+    body: str | None = None
+    headers: dict[str, str] | None = None
+
+
+class APILayer:
+    API_BASE_URL = "http://127.0.0.1:8000/api"
+
+    def __init__(self) -> None:
+        self._async_tasks: deque[asyncio.Task] = deque()
+
+    def put_heading(self, heading: float) -> None:
+        self._create_request_task(Request(
+            route="/set_heading",
+            method="PUT",
+            body=r'{"value": ' + str(heading) + r'}',
+            headers={"Content-Type": "application/json"}
+        ))
+
+    def put_speed(self, speed: float) -> None:
+        self._create_request_task(Request(
+            route="/set_speed",
+            method="PUT",
+            body=r'{"value": ' + str(speed) + r'}',
+            headers={"Content-Type": "application/json"}
+        ))
+
+    def wait_for_requests_to_finish(self) -> None:
+        loop = asyncio.get_event_loop()
+
+        while self._async_tasks:
+            task = self._async_tasks.popleft()
+            loop.run_until_complete(task)
+
+    def _create_request_task(self, request: Request) -> None:
+        self._async_tasks.append(asyncio.create_task(self._make_request(request)))
+
+    async def _make_request(self, request: Request, **fetch_kwargs: Any) -> FetchResponse:
+        kwargs = {"method": request.method, "mode": "cors"}
+        if request.body and request.method not in ["GET", "HEAD"]:
+            kwargs["body"] = request.body
+        if request.headers:
+            kwargs["headers"] = request.headers
+        kwargs.update(fetch_kwargs)
+
+        response = await pyfetch(f"{self.API_BASE_URL}{request.route}", **kwargs)
+        return response
 
 
 def translate(x: float, y: float, x_offset: float, y_offset: float) -> tuple[float, float]:
