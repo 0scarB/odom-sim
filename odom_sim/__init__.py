@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from typing import Literal, Callable
 
@@ -62,5 +63,8 @@ app.include_router(api)
 
 def start_server(
         log_level: Literal["info"] = "info",
-):
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level=log_level, loop="asyncio")
+) -> None:
+    config = uvicorn.Config(app, host="0.0.0.0", port=8000, log_level=log_level, loop="asyncio")
+    server = uvicorn.Server(config=config)
+
+    asyncio.run(server.run())
