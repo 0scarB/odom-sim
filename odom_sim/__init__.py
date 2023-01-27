@@ -76,4 +76,8 @@ def start_server(
     server = CustomServer(config=config)
 
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(server.run())
+
+    if loop.is_running():
+        asyncio.wait(server.run())
+    else:
+        loop.run_until_complete(server.run())
