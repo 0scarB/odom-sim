@@ -67,10 +67,10 @@ def start_server(
 
     class CustomServer(uvicorn.Server):
 
-        def run(self, sockets=None) -> None:
+        def run(self, sockets=None) -> asyncio.Task:
             self.config.setup_event_loop()
             loop = asyncio.get_event_loop()
-            return loop.run_until_complete(self.serve(sockets=sockets))
+            return loop.create_task(self.serve(sockets=sockets))
 
     config = uvicorn.Config(app, host="0.0.0.0", port=8000, log_level=log_level, loop="asyncio")
     server = CustomServer(config=config)
