@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
+import sys
 from typing import Any
 
 from js import document, setInterval
@@ -12,21 +13,24 @@ def main():
     canvas = document.getElementById("canvas")
     ctx = canvas.getContext("2d")
 
-    sim = Sim(canvas, ctx)
+    update_feq_in_seconds = 20 / 1000
+
+    sim = Sim(canvas, ctx, update_feq_in_seconds)
 
     update_sim_proxy = create_proxy(sim.update)
 
-    setInterval(update_sim_proxy, 20)
+    setInterval(update_sim_proxy, update_feq_in_seconds * 1000)
 
 
 class Sim:
 
-    def __init__(self, canvas, canvas_ctx):
+    def __init__(self, canvas, canvas_ctx, update_feq_in_seconds: float):
         self.canvas = canvas
         self.canvas_ctx = canvas_ctx
+        self.update_feq_in_seconds = update_feq_in_seconds
 
         self.keyboard_input_handler = KeyboardInputHandler()
-        self.robot = Robot(canvas_ctx, self.keyboard_input_handler)
+        self.robot = Robot(canvas_ctx, self.keyboard_input_handler, self.update_feq_in_seconds)
 
     def update(self) -> None:
         self.clear_canvas()
@@ -45,17 +49,20 @@ class Robot:
     ROD_THICKNESS = WHEEL_BASE / 20
     HEADING_INCREMENT = 0.01
     MAX_HEADING_CHANGE = math.pi / 4
+    MOVEMENT_SPEED = 1 / 5
 
     def __init__(
             self,
             canvas_ctx,
             keyboard_input_handler: KeyboardInputHandler,
+            update_feq_in_seconds: float,
             x_in_pixels: float | None = None,
             y_in_pixels: float | None = None,
-            pixels_per_meter: float = 1000,
+            pixels_per_meter: float = 500,
     ):
         self.canvas_ctx = canvas_ctx
         self.pixels_per_meter = pixels_per_meter
+        self.update_interval_in_seconds = update_feq_in_seconds
 
         self.heading = 0
         self.is_moving_right = False
@@ -63,7 +70,7 @@ class Robot:
         self.speed = 0
         self.x = (x_in_pixels / self.pixels_per_meter if x_in_pixels else self.WHEEL_BASE / 2) + 0.1
         self.y = (y_in_pixels / self.pixels_per_meter if y_in_pixels else self.LENGTH / 2) + 0.1
-        self.rot = 0
+        self.rot = math.pi
 
         def on_right_key_down():
             self.is_moving_right = True
@@ -71,16 +78,31 @@ class Robot:
         def on_left_key_down():
             self.is_moving_left = True
 
-        def on_key_up():
+        def on_steering_key_up():
             self.is_moving_left = False
             self.is_moving_right = False
 
+        def on_forward_key_down():
+            self.speed = self.MOVEMENT_SPEED
+
+        def on_backward_key_down():
+            self.speed = -self.MOVEMENT_SPEED
+
+        def on_movement_key_up():
+            self.speed = 0
+
         keyboard_input_handler.on_left_key_down(on_left_key_down)
         keyboard_input_handler.on_right_key_down(on_right_key_down)
-        keyboard_input_handler.on_key_up(on_key_up)
+        keyboard_input_handler.on_left_key_up(on_steering_key_up)
+        keyboard_input_handler.on_right_key_up(on_steering_key_up)
+        keyboard_input_handler.on_forward_key_down(on_forward_key_down)
+        keyboard_input_handler.on_backward_key_down(on_backward_key_down)
+        keyboard_input_handler.on_forward_key_up(on_movement_key_up)
+        keyboard_input_handler.on_backward_key_up(on_movement_key_up)
 
     def update(self) -> None:
         self.update_heading()
+        self.update_position_and_rotation()
 
         self.draw_rect(
             -self.ROD_THICKNESS / 2, -self.LENGTH / 2,
@@ -99,10 +121,40 @@ class Robot:
 
     def update_heading(self) -> None:
         if self.is_moving_left:
-            self.increment_heading(direction=1)
+            self.increment_heading(direction=-1)
 
         if self.is_moving_right:
-            self.increment_heading(direction=-1)
+            self.increment_heading(direction=1)
+            
+    def update_position_and_rotation(self) -> None:
+        cx, cy, r = self.get_turning_circle()
+
+        angle_change_on_turning_circle = self.speed * self.update_interval_in_seconds / r
+
+        change_in_x, change_in_y = rotate_around_point(cx, cy, 0, 0, -angle_change_on_turning_circle)
+        self.x, self.y = translate(self.x, self.y, *rotate_around_origin(change_in_x, change_in_y, self.rot))
+        self.rot -= angle_change_on_turning_circle
+            
+    def get_turning_circle(self) -> tuple[float, float, float]:
+        line1_x1, line1_y1 = 0, -self.LENGTH / 2
+        line1_x2, line1_y2 = 1, -self.LENGTH / 2
+
+        line2_x1, line2_y1 = 0, self.LENGTH / 2
+        line2_x2, line2_y2 = translate(*rotate_around_origin(1, 0, self.heading), 0, self.LENGTH / 2)
+
+        try:
+            cx, cy = line_intersection(
+                ((line1_x1, line1_y1), (line1_x2, line1_y2)),
+                ((line2_x1, line2_y1), (line2_x2, line2_y2)),
+            )
+        except ValueError:
+            return sys.float_info.max, -self.LENGTH / 2, sys.float_info.max
+
+        r = get_dist(cx, cy, 0, 0)
+        if cx < 0:
+            r = -r
+
+        return cx, cy, r
 
     def increment_heading(self, direction: float) -> None:
         new_heading = self.heading + direction * self.HEADING_INCREMENT
@@ -222,18 +274,6 @@ class Robot:
             self.WHEEL_WIDTH,
             self.WHEEL_DIAMETER,
             heading,
-        )
-
-    def draw_arrow(self, offset: float, heading: float) -> None:
-        self.draw_rect_around_center(
-            0, self.ROD_THICKNESS + offset,
-            self.WHEEL_BASE / 2, self.ROD_THICKNESS / 2,
-            heading + math.pi / 2
-        )
-        self.draw_triangle_around_center(
-            0, self.ROD_THICKNESS + offset,
-            self.ROD_THICKNESS * 2, self.LENGTH / 6,
-            heading
         )
 
     def draw_turing_circle(self) -> None:
