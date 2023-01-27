@@ -458,7 +458,7 @@ class Request:
 
 
 class APILayer:
-    API_BASE_URL = "http://0.0.0.0:8000/api"
+    API_BASE_URL = "http://192.168.0.184:8000/api"
 
     def __init__(self) -> None:
         self._async_tasks: deque[asyncio.Task] = deque()
