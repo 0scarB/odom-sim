@@ -67,4 +67,5 @@ def start_server(
     config = uvicorn.Config(app, host="0.0.0.0", port=8000, log_level=log_level, loop="asyncio")
     server = uvicorn.Server(config=config)
 
-    asyncio.run(server.run())
+    loop = asyncio.get_event_loop()
+    loop.run(server.run())
