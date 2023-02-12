@@ -2,3 +2,4 @@ fastapi>=0.89.1<0.90
 uvicorn
 aiofiles
 pydantic
+pytest
