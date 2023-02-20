@@ -56,7 +56,7 @@ class Robot:
     ROD_THICKNESS = WHEEL_BASE / 20
     HEADING_INCREMENT = 0.01
     MAX_HEADING_CHANGE = math.pi / 4
-    MOVEMENT_SPEED = 1
+    MOVEMENT_SPEED = 1 / 5
 
     def __init__(
             self,
@@ -88,11 +88,9 @@ class Robot:
         def on_left_key_down():
             self.is_moving_left = True
 
-        def on_right_key_up():
-            self.is_moving_right = False
-
-        def on_left_key_up():
+        def on_steering_key_up():
             self.is_moving_left = False
+            self.is_moving_right = False
 
         def on_forward_key_down():
             self.speed = self.MOVEMENT_SPEED
@@ -105,8 +103,8 @@ class Robot:
 
         keyboard_input_handler.on_left_key_down(on_left_key_down)
         keyboard_input_handler.on_right_key_down(on_right_key_down)
-        keyboard_input_handler.on_left_key_up(on_left_key_up)
-        keyboard_input_handler.on_right_key_up(on_right_key_up)
+        keyboard_input_handler.on_left_key_up(on_steering_key_up)
+        keyboard_input_handler.on_right_key_up(on_steering_key_up)
         keyboard_input_handler.on_forward_key_down(on_forward_key_down)
         keyboard_input_handler.on_backward_key_down(on_backward_key_down)
         keyboard_input_handler.on_forward_key_up(on_movement_key_up)
