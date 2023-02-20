@@ -5,8 +5,7 @@ import math
 from abc import ABC
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, overload, Iterator, Literal, NoReturn, Protocol
-from typing_extensions import Self
+from typing import Any, overload, Iterator, Literal, NoReturn, Protocol, TypeVar
 
 
 _TranslationDirection = Literal[
@@ -33,37 +32,48 @@ def vector(x: float, y: float) -> Vector2d:
 
 
 @overload
-def transform(vector: Vector2d, transformation: Transformation2d) -> Vector2d: ...
+def transform(transformable: _ATransformable, transformation: Transformation) -> _ATransformable: ...
 
 
 @overload
-def transform(x: float, y: float, transformation: Transformation2d) -> Vector2d: ...
+def transform(x: float, y: float, transformation: Transformation) -> Vector2d: ...
 
 
-def transform(*args: float | Vector2d | Transformation2d) -> Vector2d:
+def transform(*args: float | Transformable | Transformation) -> Transformable:
     *args, transformation = args
-    return transformation.__apply_transform_to__(*args)
+    transformable = _args_to_transformable(*args)
+    return transformation.__apply_transform_to__(transformable)
 
 
 @overload
-def undo_transform(vector: Vector2d, transformation: Transformation2d) -> Vector2d: ...
+def undo_transform(transformable: _ATransformable, transformation: Transformation) -> _ATransformable: ...
 
 
 @overload
-def undo_transform(x: float, y: float, transformation: Transformation2d) -> Vector2d: ...
+def undo_transform(x: float, y: float, transformation: Transformation) -> Vector2d: ...
 
 
-def undo_transform(*args: float | Vector2d | Transformation2d) -> Vector2d:
+def undo_transform(*args: float | Transformable | Transformation) -> Transformable:
     *args, transformation = args
-    return transformation.__remove_transform_from__(*args)
+    transformable = _args_to_transformable(*args)
+    return transformation.__remove_transform_from__(transformable)
+
+
+def _args_to_transformable(*args: float | Transformable) -> Transformable:
+    if len(args) == 1:
+        return args[0]
+    else:
+        x, y = args
+
+        return Vector2d(x, y)
 
 
 @overload
-def translate(vector: Vector2d) -> AffineTransformation: ...
+def translate(transformable: Transformable) -> AffineTransformation: ...
 
 
 @overload
-def translate(vector: Vector2d, direction: _TranslationDirection) -> AffineTransformation: ...
+def translate(transformable: Transformable, direction: _TranslationDirection) -> AffineTransformation: ...
 
 
 @overload
@@ -74,7 +84,7 @@ def translate(x: float, y: float) -> AffineTransformation: ...
 def translate(x: float, y: float, direction: _TranslationDirection) -> AffineTransformation: ...
 
 
-def translate(*args: float | Vector2d | _TranslationDirection) -> AffineTransformation:
+def translate(*args: float | Transformable | _TranslationDirection) -> AffineTransformation:
     return AffineTransformation().translate(*args)
 
 
@@ -91,11 +101,11 @@ def rotate(*args: float | _RotationDirection) -> AffineTransformation:
 
 
 @overload
-def scale(vector: Vector2d) -> AffineTransformation: ...
+def scale(transformable: Transformable) -> AffineTransformation: ...
 
 
 @overload
-def scale(vector: Vector2d, direction: _ScaleDirection) -> AffineTransformation: ...
+def scale(transformable: Transformable, direction: _ScaleDirection) -> AffineTransformation: ...
 
 
 @overload
@@ -118,31 +128,19 @@ def scale(*args: float | Vector2d | _ScaleDirection) -> AffineTransformation:
     return AffineTransformation().scale(*args)
 
 
-class Transformation2d(Protocol):
+class Transformation(Protocol):
 
-    @overload
-    def __apply_transform_to__(self, vector: Vector2d) -> Vector2d: ...
+    def __apply_transform_to__(self, transformable: _ATransformable) -> _ATransformable: ...
 
-    @overload
-    def __apply_transform_to__(self, x: float, y: float) -> Vector2d: ...
-
-    def __apply_transform_to__(self, *args: float | Vector2d) -> Vector2d: ...
-
-    @overload
-    def __remove_transform_from__(self, vector: Vector2d) -> Vector2d: ...
-
-    @overload
-    def __remove_transform_from__(self, x: float, y: float) -> Vector2d: ...
-
-    def __remove_transform_from__(self, *args: float | Vector2d) -> Vector2d: ...
+    def __remove_transform_from__(self, transformable: _ATransformable) -> _ATransformable: ...
 
 
 @dataclass(init=False)
-class AffineTransformation(Transformation2d):
+class AffineTransformation(Transformation):
     matrix: Matrix3x3
 
     @classmethod
-    def _from_matrix(cls, matrix: Matrix3x3) -> Self:
+    def _from_matrix(cls, matrix: Matrix3x3) -> AffineTransformation:
         inst = cls()
 
         inst.matrix = matrix
@@ -156,22 +154,22 @@ class AffineTransformation(Transformation2d):
             (0, 0, 1),
         )
 
-    def transform(self, transformation: Self) -> Self:
+    def transform(self, transformation: AffineTransformation) -> AffineTransformation:
         return self._from_matrix(transformation.matrix * self.matrix)
 
     @overload
-    def translate(self, vector: Vector2d) -> Self: ...
+    def translate(self, vector: Vector2d) -> AffineTransformation: ...
 
     @overload
-    def translate(self, vector: Vector2d, direction: _TranslationDirection) -> Self: ...
+    def translate(self, vector: Vector2d, direction: _TranslationDirection) -> AffineTransformation: ...
 
     @overload
-    def translate(self, x: float, y: float) -> Self: ...
+    def translate(self, x: float, y: float) -> AffineTransformation: ...
 
     @overload
-    def translate(self, x: float, y: float, direction: _TranslationDirection) -> Self: ...
+    def translate(self, x: float, y: float, direction: _TranslationDirection) -> AffineTransformation: ...
 
-    def translate(self, *args: float | Vector2d | _TranslationDirection) -> Self:
+    def translate(self, *args: float | Vector2d | _TranslationDirection) -> AffineTransformation:
         if type(args[-1]) is str:
             *args, direction = args
         else:
@@ -199,12 +197,12 @@ class AffineTransformation(Transformation2d):
         ) * self.matrix)
 
     @overload
-    def rotate(self, angle: float) -> Self: ...
+    def rotate(self, angle: float) -> AffineTransformation: ...
 
     @overload
-    def rotate(self, angle: float, direction: _RotationDirection) -> Self: ...
+    def rotate(self, angle: float, direction: _RotationDirection) -> AffineTransformation: ...
 
-    def rotate(self, *args) -> Self:
+    def rotate(self, *args) -> AffineTransformation:
         if type(args[-1]) is str:
             *args, direction = args
         else:
@@ -222,24 +220,24 @@ class AffineTransformation(Transformation2d):
         ) * self.matrix)
 
     @overload
-    def scale(self, vector: Vector2d) -> Self: ...
+    def scale(self, vector: Vector2d) -> AffineTransformation: ...
 
     @overload
-    def scale(self, vector: Vector2d, direction: _ScaleDirection) -> Self: ...
+    def scale(self, vector: Vector2d, direction: _ScaleDirection) -> AffineTransformation: ...
 
     @overload
-    def scale(self, x: float, y: float) -> Self: ...
+    def scale(self, x: float, y: float) -> AffineTransformation: ...
 
     @overload
-    def scale(self, x: float, y: float, direction: _ScaleDirection) -> Self: ...
+    def scale(self, x: float, y: float, direction: _ScaleDirection) -> AffineTransformation: ...
 
     @overload
-    def scale(self, x_and_y: float) -> Self: ...
+    def scale(self, x_and_y: float) -> AffineTransformation: ...
 
     @overload
-    def scale(self, x_and_y: float, direction: _ScaleDirection) -> Self: ...
+    def scale(self, x_and_y: float, direction: _ScaleDirection) -> AffineTransformation: ...
 
-    def scale(self, *args: float | Vector2d | _ScaleDirection) -> Self:
+    def scale(self, *args: float | Vector2d | _ScaleDirection) -> AffineTransformation:
         if type(args[-1]) is str:
             *args, direction = args
         else:
@@ -264,51 +262,63 @@ class AffineTransformation(Transformation2d):
             (0, 0, 1),
         ) * self.matrix)
 
-    def invert(self) -> Self:
+    def invert(self) -> AffineTransformation:
         return self._from_matrix(self.matrix ** -1)
 
-    def __apply_transform_to__(self, *args: float | Vector2d) -> Vector2d:
-        if len(args) == 1:
-            vector = args[0]
+    def __apply_transform_to__(self, transformable: _ATransformable) -> _ATransformable:
 
-            x, y = vector.x, vector.y
-        else:
-            x, y = args
+        def transform_vector(vector: Vector2d) -> Vector2d:
+            vector3d = Vector3d(vector.x, vector.y, 1)
 
-        vec3 = Vector3d(x, y, 1)
+            transformed_vector3d = self.matrix * vector3d
 
-        transformed_vec3 = self.matrix * vec3
+            return Vector2d(
+                transformed_vector3d.x,
+                transformed_vector3d.y,
+            )
 
-        return Vector2d(
-            transformed_vec3.x,
-            transformed_vec3.y,
+        return transformable.__from_vectors__(
+            transform_vector(vector)
+            for vector in transformable.__as_vectors__()
         )
 
-    def __remove_transform_from__(self, *args: float | Vector2d) -> Vector2d:
-        if len(args) == 1:
-            vector = args[0]
+    def __remove_transform_from__(self, transformable: _ATransformable) -> _ATransformable:
 
-            x, y = vector.x, vector.y
-        else:
-            x, y = args
+        inverse_matrix = self.matrix**-1
 
-        vec3 = Vector3d(x, y, 1)
+        def inverse_transform_vector(vector: Vector2d) -> Vector2d:
+            vector3d = Vector3d(vector.x, vector.y, 1)
 
-        transformed_vec3 = self.matrix**-1 * vec3
+            transformed_vector3d = inverse_matrix * vector3d
 
-        return Vector2d(
-            transformed_vec3.x,
-            transformed_vec3.y,
+            return Vector2d(
+                transformed_vector3d.x,
+                transformed_vector3d.y,
+            )
+
+        return transformable.__from_vectors__(
+            inverse_transform_vector(vector)
+            for vector in transformable.__as_vectors__()
         )
+
+
+class Transformable(Protocol):
+
+    def __as_vectors__(self) -> Iterator[Vector2d]: ...
+
+    def __from_vectors__(self, vectors: Iterator[Vector2d]) -> Transformable: ...
+
+
+_ATransformable = TypeVar("_ATransformable", bound=Transformable)
 
 
 class SupportsApproxEquals(Protocol):
 
-    def __approx_equals__(self, other: Self, threshold: float) -> bool: ...
+    def __approx_equals__(self, other: SupportsApproxEquals, threshold: float) -> bool: ...
 
 
 @dataclass(init=False)
-class Vector2d(SupportsApproxEquals):
+class Vector2d(Transformable, SupportsApproxEquals):
     x: float
     y: float
 
@@ -328,7 +338,7 @@ class Vector2d(SupportsApproxEquals):
         yield self.x
         yield self.y
 
-    def __add__(self, other: Any) -> Self:
+    def __add__(self, other: Any) -> Vector2d:
         if isinstance(other, type(self)):
             return type(self)(self.x + other.x, self.y + other.y)
 
@@ -336,7 +346,7 @@ class Vector2d(SupportsApproxEquals):
             f"{type(self).__name__} can only be added to another {type(self).__name__}"
         )
 
-    def __mul__(self, other: Any) -> Self:
+    def __mul__(self, other: Any) -> Vector2d:
         if type(other) in frozenset({int, float}):
             return type(self)(other * self.x, other * self.y)
 
@@ -355,7 +365,13 @@ class Vector2d(SupportsApproxEquals):
             f"\\{self.y:<{col_width}.5}/"
         )
 
-    def __approx_equals__(self, other: Self, threshold: float) -> bool:
+    def __as_vectors__(self) -> Iterator[Vector2d]:
+        yield self
+
+    def __from_vectors__(self, vectors: Iterator[Vector2d]) -> Vector2d:
+        return next(vectors)
+
+    def __approx_equals__(self, other: Vector2d, threshold: float) -> bool:
         return (
                 approx_equals(self.x, other.x, threshold)
                 and approx_equals(self.y, other.y, threshold)
@@ -388,7 +404,7 @@ class Vector3d(SupportsApproxEquals):
         yield self.y
         yield self.z
 
-    def __add__(self, other: Any) -> Self:
+    def __add__(self, other: Any) -> Vector3d:
         if isinstance(other, type(self)):
             return type(self)(self.x + other.x, self.y + other.y, self.z + other.z)
 
@@ -396,7 +412,7 @@ class Vector3d(SupportsApproxEquals):
             f"{type(self).__name__} can only be added to another {type(self).__name__}"
         )
 
-    def __mul__(self, other: Any) -> Self:
+    def __mul__(self, other: Any) -> Vector3d:
         if type(other) in frozenset({int, float}):
             return type(self)(other * self.x, other * self.y, other * self.z)
 
@@ -420,7 +436,7 @@ class Vector3d(SupportsApproxEquals):
             f"\\{self.z:<{col_width}.5}/"
         )
 
-    def __approx_equals__(self, other: Self, threshold: float) -> bool:
+    def __approx_equals__(self, other: Vector3d, threshold: float) -> bool:
         return (
                 approx_equals(self.x, other.x, threshold)
                 and approx_equals(self.y, other.y, threshold)
@@ -443,9 +459,9 @@ class _BaseMatrix(SupportsApproxEquals, SupportsDeterminant, ABC):
     def __pow__(self, exponent: Any) -> NoReturn: ...
 
     @overload
-    def __pow__(self, exponent: Literal[1, -1, "T"]) -> Self: ...
+    def __pow__(self, exponent: Literal[1, -1, "T"]) -> _BaseMatrix: ...
 
-    def __pow__(self, exponent: Any) -> Self | None:
+    def __pow__(self, exponent: Any) -> _BaseMatrix | None:
         if exponent == 1:
             return self.__copy__()
 
@@ -460,13 +476,13 @@ class _BaseMatrix(SupportsApproxEquals, SupportsDeterminant, ABC):
         )
 
     @abc.abstractmethod
-    def __transpose__(self) -> Self: ...
+    def __transpose__(self) -> _BaseMatrix: ...
 
     @abc.abstractmethod
-    def __inverse__(self) -> Self: ...
+    def __inverse__(self) -> _BaseMatrix: ...
 
     @abc.abstractmethod
-    def __copy__(self) -> Self: ...
+    def __copy__(self) -> _BaseMatrix: ...
 
 
 @dataclass(init=False)
@@ -499,12 +515,12 @@ class Matrix2x2(_BaseMatrix):
     def __mul__(self, other: Any) -> NoReturn: ...
 
     @overload
-    def __mul__(self, matrix2x2: Self) -> Self: ...
+    def __mul__(self, matrix2x2: Matrix2x2) -> Matrix2x2: ...
 
     @overload
     def __mul__(self, vector2d: Vector2d) -> Vector2d: ...
 
-    def __mul__(self, other: Any) -> Self | Vector2d | NoReturn:
+    def __mul__(self, other: Any) -> Matrix2x2 | Vector2d | NoReturn:
         if isinstance(other, Vector2d):
             return self._multiply_by_vector(other)
 
@@ -519,9 +535,9 @@ class Matrix2x2(_BaseMatrix):
     def __rmul__(self, other: Any) -> NoReturn: ...
 
     @overload
-    def __rmul__(self, other: float | int) -> Self: ...
+    def __rmul__(self, other: float | int) -> Matrix2x2: ...
 
-    def __rmul__(self, other: Any) -> Self | NoReturn:
+    def __rmul__(self, other: Any) -> Matrix2x2 | NoReturn:
         if (type_ := type(other)) is float or type_ is int:
             return self._multiply_by_scalar(other)
 
@@ -551,26 +567,26 @@ class Matrix2x2(_BaseMatrix):
     def __det__(self) -> float:
         return self[0][0] * self[1][1] - self[0][1] * self[1][0]
 
-    def __transpose__(self) -> Self:
+    def __transpose__(self) -> Matrix2x2:
         return type(self)(
             (self[0][0], self[1][0]),
             (self[0][1], self[1][1]),
         )
 
-    def __inverse__(self) -> Self:
+    def __inverse__(self) -> Matrix2x2:
         return (1 / det(self)) * type(self)(
             (self[0][0], -self[0][1]),
             (-self[1][0], self[1][1])
         )
 
-    def __approx_equals__(self, other: Self, threshold: float) -> bool:
+    def __approx_equals__(self, other: Matrix2x2, threshold: float) -> bool:
         return all(
             approx_equals(self[row][column], other[row][column], threshold)
             for row in range(2)
             for column in range(2)
         )
 
-    def __copy__(self) -> Self:
+    def __copy__(self) -> Matrix2x2:
         return type(self)(self._matrix[0], self._matrix[1])
 
     def _multiply_by_vector(self, vector: Vector2d) -> Vector2d:
@@ -579,7 +595,7 @@ class Matrix2x2(_BaseMatrix):
             self[1][0] * vector[1] + self[1][1] * vector[1],
         )
 
-    def _multiply_by_matrix(self, matrix: Self) -> Self:
+    def _multiply_by_matrix(self, matrix: Matrix2x2) -> Matrix2x2:
         return type(self)(
             (
                 self[0][0] * matrix[0][0] + self[0][1] * matrix[1][0],
@@ -591,7 +607,7 @@ class Matrix2x2(_BaseMatrix):
             ),
         )
 
-    def _multiply_by_scalar(self, scalar: float | int) -> Self:
+    def _multiply_by_scalar(self, scalar: float | int) -> Matrix2x2:
         return type(self)(
             (scalar * self[0][0], scalar * self[0][1]),
             (scalar * self[1][0], scalar * self[1][1])
@@ -633,12 +649,12 @@ class Matrix3x3(_BaseMatrix):
     def __mul__(self, other: Any) -> NoReturn: ...
 
     @overload
-    def __mul__(self, matrix3x3: Self) -> Self: ...
+    def __mul__(self, matrix3x3: Matrix3x3) -> Matrix3x3: ...
 
     @overload
     def __mul__(self, vector3d: Vector3d) -> Vector3d: ...
 
-    def __mul__(self, other: Any) -> Self | Vector3d | NoReturn:
+    def __mul__(self, other: Any) -> Matrix3x3 | Vector3d | NoReturn:
         if isinstance(other, Vector3d):
             return self._multiply_by_vector(other)
 
@@ -653,9 +669,9 @@ class Matrix3x3(_BaseMatrix):
     def __rmul__(self, other: Any) -> NoReturn: ...
 
     @overload
-    def __rmul__(self, other: float | int) -> Self: ...
+    def __rmul__(self, other: float | int) -> Matrix3x3: ...
 
-    def __rmul__(self, other: Any) -> Self | NoReturn:
+    def __rmul__(self, other: Any) -> Matrix3x3 | NoReturn:
         if (type_ := type(other)) is float or type_ is int:
             return self._multiply_by_scalar(other)
 
@@ -694,7 +710,7 @@ class Matrix3x3(_BaseMatrix):
                 - self[0][1] * self[1][0] * self[2][2]
         )
 
-    def __inverse__(self) -> Self:
+    def __inverse__(self) -> Matrix3x3:
         return (1 / det(self)) * type(self)(
             (
                 self[1][1] * self[2][2] - self[1][2] * self[2][1],
@@ -713,17 +729,17 @@ class Matrix3x3(_BaseMatrix):
             )
         ) ** "T"
 
-    def __transpose__(self) -> Self:
+    def __transpose__(self) -> Matrix3x3:
         return type(self)(
             (self[0][0], self[1][0], self[2][0]),
             (self[0][1], self[1][1], self[2][1]),
             (self[0][2], self[1][2], self[2][2]),
         )
 
-    def __copy__(self) -> Self:
+    def __copy__(self) -> Matrix3x3:
         return type(self)(self._matrix[0], self._matrix[1], self._matrix[2])
 
-    def __approx_equals__(self, other: Self, threshold: float) -> bool:
+    def __approx_equals__(self, other: Matrix3x3, threshold: float) -> bool:
         return all(
             approx_equals(self[row][column], other[row][column], threshold)
             for row in range(3)
@@ -737,7 +753,7 @@ class Matrix3x3(_BaseMatrix):
             self[2][0] * vector[0] + self[2][1] * vector[1] + self[2][2] * vector[2],
         )
 
-    def _multiply_by_matrix(self, matrix: Self) -> Self:
+    def _multiply_by_matrix(self, matrix: Matrix3x3) -> Matrix3x3:
         return type(self)(
             (
                 self[0][0] * matrix[0][0] + self[0][1] * matrix[1][0] + self[0][2] * matrix[2][0],
@@ -756,7 +772,7 @@ class Matrix3x3(_BaseMatrix):
             ),
         )
 
-    def _multiply_by_scalar(self, scalar: float | int) -> Self:
+    def _multiply_by_scalar(self, scalar: float | int) -> Matrix3x3:
         return type(self)(
             (scalar * self[0][0], scalar * self[0][1], scalar * self[0][2]),
             (scalar * self[1][0], scalar * self[1][1], scalar * self[1][2]),

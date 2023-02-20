@@ -1,0 +1,9 @@
+[[fetch]]
+files = [
+    "simulation/__init__.py",
+    "simulation/calculation.py",
+    "simulation/component.py",
+    "simulation/geometry.py",
+    "simulation/robot.py",
+    "simulation/shapes.py",
+]

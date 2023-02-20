@@ -1,6 +1,6 @@
 import math
 
-from calculation.geometry import (
+from .geometry import (
     AffineTransformation,
     approx_equals,
     det,

@@ -36,21 +36,21 @@ class FloatValueRequest(BaseModel):
     value: float
 
 
-_on_change_heading_callbacks: list[Callable[[float], None]] = []
+_on_change_steering_angle_callbacks: list[Callable[[float], None]] = []
 _on_change_speed_callbacks: list[Callable[[float], None]] = []
 
 
-def on_change_heading(callback: Callable[[float], None]) -> None:
-    _on_change_heading_callbacks.append(callback)
+def on_change_steering_angle(callback: Callable[[float], None]) -> None:
+    _on_change_steering_angle_callbacks.append(callback)
 
 
 def on_change_speed(callback: Callable[[float], None]) -> None:
     _on_change_speed_callbacks.append(callback)
 
 
-@api.put("/set_heading")
-async def _set_heading(request: FloatValueRequest) -> None:
-    for callback in _on_change_heading_callbacks:
+@api.put("/set_steering_angle")
+async def _set_steering_angle(request: FloatValueRequest) -> None:
+    for callback in _on_change_steering_angle_callbacks:
         callback(request.value)
 
 
